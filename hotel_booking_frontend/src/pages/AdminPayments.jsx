@@ -1,0 +1,199 @@
+import React, { useEffect, useState } from "react";
+import axios from "axios";
+
+const API_BASE = "http://localhost:9090/api";
+
+const AdminPayments = ({ getUser }) => {
+  const [payments, setPayments] = useState([]);
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+
+  // Modal state
+  const [showDelete, setShowDelete] = useState(false);
+  const [paymentToDelete, setPaymentToDelete] = useState(null);
+
+  useEffect(() => {
+    fetchPayments();
+  }, [page, size]);
+
+  const fetchPayments = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(`${API_BASE}/payments?page=${page}&size=${size}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      let paymentsData = [];
+      if (Array.isArray(res.data)) {
+        paymentsData = res.data;
+      } else if (res.data && Array.isArray(res.data.content)) {
+        paymentsData = res.data.content;
+      }
+      
+      setPayments(paymentsData);
+      const newTotalPages = res.data.totalPages || 1;
+      setTotalPages(newTotalPages);
+      if (page >= newTotalPages && newTotalPages > 0) {
+        setPage(newTotalPages - 1);
+      }
+    } catch (err) {
+      console.error("Error fetching payments:", err);
+      setPayments([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Delete
+  const handleDelete = async () => {
+    const token = localStorage.getItem("token");
+    try {
+      await axios.delete(`${API_BASE}/payments/${paymentToDelete.paymentId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setShowDelete(false);
+      setPaymentToDelete(null);
+      fetchPayments();
+    } catch (err) {
+      alert("Failed to delete payment.");
+    }
+  };
+
+  // Admin check
+  const user = getUser ? getUser() : JSON.parse(localStorage.getItem("user") || "{}");
+  if (!user || !user.roles || !user.roles.includes("ADMIN")) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-black">
+        <div className="text-2xl text-[#00df9a] font-bold">Access Denied: Admins Only</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-black py-10 px-4">
+      <div className="max-w-6xl mx-auto bg-[#181f2a] rounded-xl shadow-xl p-8 border border-gray-800">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-[#00df9a]">Payments</h1>
+        </div>
+        
+        {loading ? (
+          <div className="text-center text-[#00df9a]">Loading...</div>
+        ) : (
+          <>
+            <div className="overflow-x-auto rounded-lg shadow-inner mb-4">
+              <table className="min-w-full bg-[#101e36] rounded-lg overflow-hidden">
+                <thead>
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-300 uppercase">Guest</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-300 uppercase">Hotel</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-300 uppercase">Amount</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-300 uppercase">Method</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-300 uppercase">Status</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-300 uppercase">Date</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-gray-300 uppercase">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.map((p, index) => (
+                    <tr key={p.paymentId} className="border-b border-gray-800">
+                      <td className="px-4 py-2 text-[#00df9a]">{p.guestName || p.guest || "-"}</td>
+                      <td className="px-4 py-2 text-white">{p.hotelName || p.hotel || "-"}</td>
+                      <td className="px-4 py-2 text-white">${p.amountPaid?.toFixed(2) || "0.00"}</td>
+                      <td className="px-4 py-2 text-white">{p.paymentMethod}</td>
+                      <td className="px-4 py-2 text-white">
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          p.paymentStatus === 'COMPLETED' ? 'bg-green-600 text-white' :
+                          p.paymentStatus === 'PENDING' ? 'bg-yellow-600 text-white' :
+                          p.paymentStatus === 'FAILED' ? 'bg-red-600 text-white' :
+                          'bg-gray-600 text-white'
+                        }`}>
+                          {p.paymentStatus}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-white">{p.paymentDate}</td>
+                      <td className="px-4 py-2">
+                        <button
+                          className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                          onClick={() => {
+                            setPaymentToDelete(p);
+                            setShowDelete(true);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Pagination Controls */}
+            <div className="flex items-center justify-between mt-4">
+              <div>
+                <button
+                  className="bg-gray-700 text-gray-200 px-3 py-1 rounded mr-2 disabled:opacity-50"
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                >
+                  Prev
+                </button>
+                <span className="text-gray-300 font-semibold">
+                  Page {page + 1} of {totalPages}
+                </span>
+                <button
+                  className="bg-gray-700 text-gray-200 px-3 py-1 rounded ml-2 disabled:opacity-50"
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                >
+                  Next
+                </button>
+              </div>
+              <div>
+                <label className="text-gray-300 mr-2">Rows per page:</label>
+                <select
+                  className="bg-gray-700 text-gray-200 px-2 py-1 rounded"
+                  value={size}
+                  onChange={(e) => setSize(Number(e.target.value))}
+                >
+                  {[5, 10, 20, 50].map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Delete Confirmation */}
+        {showDelete && (
+          <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
+              <h2 className="text-xl font-bold mb-4">Delete Payment</h2>
+              <p className="mb-6">Are you sure you want to delete the payment of <span className="font-semibold">${paymentToDelete?.amountPaid?.toFixed(2)}</span> for <span className="font-semibold">{paymentToDelete?.guestName || paymentToDelete?.guest}</span>?</p>
+              <div className="flex justify-center">
+                <button
+                  className="bg-gray-300 text-gray-700 px-4 py-2 rounded mr-2"
+                  onClick={() => setShowDelete(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="bg-red-600 text-white px-4 py-2 rounded font-semibold"
+                  onClick={handleDelete}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default AdminPayments;
